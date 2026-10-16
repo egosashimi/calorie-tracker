@@ -9,6 +9,7 @@ import { displayServing, fmtQty, gramsFor, kcalPerServing, recipeToFood, type Fo
 import { searchUsda, normalize } from '../lib/usda';
 import { fdcSearch, offSearch } from '../lib/online';
 import { defaultMeal, foodCache, logFood } from '../lib/actions';
+import { WeightSheet } from './Weight';
 
 type Tab = 'recent' | 'frequent' | 'favorites' | 'mine' | 'recipes';
 
@@ -23,6 +24,7 @@ export function AddFood({ q }: { q: URLSearchParams }) {
   const date = q.get('date') ?? today();
   const [meal, setMeal] = useState(q.has('meal') ? Number(q.get('meal')) : defaultMeal());
   const [query, setQuery] = useState('');
+  const [weighOpen, setWeighOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('recent');
   const [usda, setUsda] = useState<Food[]>([]);
   const [usdaError, setUsdaError] = useState('');
@@ -111,8 +113,10 @@ export function AddFood({ q }: { q: URLSearchParams }) {
           {mode === 'log' && <button class="action" onClick={() => go('/quick' + extra)}><Icon name="quick" />Quick add</button>}
           {mode === 'log' && <button class="action" onClick={() => go('/ai' + extra)}><Icon name="chat" />Describe</button>}
           <button class="action" onClick={() => go('/custom-food' + extra)}><Icon name="edit" />Create</button>
+          {mode === 'log' && <button class="action" onClick={() => setWeighOpen(true)}><Icon name="scale" />Weight</button>}
         </div>
       )}
+      <WeightSheet open={weighOpen} date={date} onClose={() => setWeighOpen(false)} />
 
       {query.trim().length >= 1 ? (
         <>

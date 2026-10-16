@@ -1,9 +1,9 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { Screen, TopBar, NumInput, Field, Sheet, Empty, toast } from '../ui/components';
 import { Icon } from '../ui/icons';
 import { useAppState, useQuery } from '../lib/store';
 import { all, del, get, put, putMany, type MetricRecord, type WeightRecord } from '../lib/db';
-import { fmtDay, today, type Day } from '../lib/date';
+import { fmtDay, relativeDay, today, type Day } from '../lib/date';
 import { computeTrend } from '../lib/trend';
 import { CM_PER_IN, fmtWeight, fromDisplayWeight, toDisplayWeight } from '../lib/units';
 import { parseWeightCsv } from '../lib/backup';
@@ -118,5 +118,54 @@ export function WeightLog() {
         </div>
       </Sheet>
     </Screen>
+  );
+}
+
+/** Quick weigh-in for one day, used from the add (+) screen and the food log. */
+export function WeightSheet({ open, date, onClose }: { open: boolean; date: Day; onClose: () => void }) {
+  const { settings } = useAppState();
+  const unit = settings.weightUnit;
+  const [existing, setExisting] = useState<WeightRecord | null>(null);
+  const [w, setW] = useState<number | null>(null);
+  const [bf, setBf] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    Promise.all([get('weights', date), get('metrics', date)]).then(([rec, m]) => {
+      setExisting(rec ?? null);
+      setW(rec ? Number(toDisplayWeight(rec.kg, unit).toFixed(1)) : null);
+      setBf(m?.bodyFat ?? null);
+    });
+  }, [open, date, unit]);
+
+  const save = async () => {
+    if (!w || w <= 0) return;
+    await put('weights', { date, kg: fromDisplayWeight(w, unit), time: Date.now() });
+    const m = await get('metrics', date);
+    if (bf != null) await put('metrics', { ...(m ?? { date }), bodyFat: bf });
+    else if (m?.bodyFat != null) await put('metrics', { ...m, bodyFat: undefined });
+    toast(`Weight saved for ${relativeDay(date).toLowerCase()}`);
+    onClose();
+  };
+
+  const remove = async () => {
+    if (!existing) return;
+    const r = existing;
+    await del('weights', r.date);
+    toast('Weight deleted', { label: 'Undo', run: () => void put('weights', r) });
+    onClose();
+  };
+
+  return (
+    <Sheet open={open} onClose={onClose} title={`Weight · ${relativeDay(date)}`}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <Field label={`Weight (${unit})`}><NumInput class="input" value={w} onChange={setW} placeholder={unit} autoFocus={open} /></Field>
+        <Field label="Body fat % (optional)"><NumInput class="input" value={bf} onChange={setBf} /></Field>
+      </div>
+      <div class="btn-row">
+        {existing && <button class="btn danger" onClick={remove}>Delete</button>}
+        <button class="btn" disabled={!w || w <= 0} onClick={save}>{existing ? 'Update' : 'Save'}</button>
+      </div>
+    </Sheet>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect } from 'preact/hooks';
-import { useRoute, go } from './router';
+import { useRoute, go, qs } from './router';
 import { useAppState } from './lib/store';
 import { Icon } from './ui/icons';
 import { Toaster } from './ui/components';
@@ -71,7 +71,7 @@ export function App() {
         <nav class="tabbar" aria-label="Main">
           <div class="tabbar-inner">
             {TABS.map((t) => t.id === 'add' ? (
-              <button key="add" class="tab tab-add" aria-label="Add food" onClick={() => go('/add')}>
+              <button key="add" class="tab tab-add" aria-label="Add" onClick={() => go('/add' + qs({ date: head === 'log' && /^\d{4}-\d{2}-\d{2}$/.test(route.path[1] ?? '') ? route.path[1] : undefined }))}>
                 <span><Icon name="plus" size={24} /></span>
               </button>
             ) : (

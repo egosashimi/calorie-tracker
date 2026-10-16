@@ -9,6 +9,7 @@ import { sum } from '../lib/nutrients';
 import { targetsFor } from '../lib/program';
 import { fmtQty, uid, type LogEntry, type Recipe } from '../lib/foods';
 import { copyDay, copyEntries, deleteEntries } from '../lib/actions';
+import { WeightSheet } from './Weight';
 
 export function Log({ day: dayParam }: { day?: string }) {
   const { settings, program } = useAppState();
@@ -19,6 +20,7 @@ export function Log({ day: dayParam }: { day?: string }) {
   const weekEntries = useQuery(() => entriesBetween(weekStart, addDays(weekStart, 6)), [weekStart], ['entries']) ?? [];
   const [menu, setMenu] = useState<null | 'day' | number>(null);
   const [noteOpen, setNoteOpen] = useState(false);
+  const [weighOpen, setWeighOpen] = useState(false);
   const [note, setNote] = useState('');
 
   const n = sum(entries.map((e) => e.n));
@@ -115,6 +117,9 @@ export function Log({ day: dayParam }: { day?: string }) {
 
       <Sheet open={menu === 'day'} onClose={() => setMenu(null)} title={fmtDay(day, { weekday: true })}>
         <div class="list">
+          <button class="item" onClick={() => { setMenu(null); setWeighOpen(true); }}>
+            <Icon name="scale" class="muted" /><span class="grow">Log weight for this day</span>
+          </button>
           <button class="item" onClick={async () => { setMenu(null); await copyDay(addDays(day, -1), day); }}>
             <Icon name="copy" class="muted" /><span class="grow">Copy previous day here</span>
           </button>
@@ -157,6 +162,8 @@ export function Log({ day: dayParam }: { day?: string }) {
           </div>
         )}
       </Sheet>
+
+      <WeightSheet open={weighOpen} date={day} onClose={() => setWeighOpen(false)} />
 
       <Sheet open={noteOpen} onClose={() => setNoteOpen(false)} title="Note">
         <textarea class="textarea" value={note} onInput={(e) => setNote((e.target as HTMLTextAreaElement).value)} placeholder="How did today go?" />
