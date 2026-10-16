@@ -1,0 +1,5 @@
+node_modules
+dist
+public/data/usda-sr28.json
+*.log
+.DS_Store
