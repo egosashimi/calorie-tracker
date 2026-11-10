@@ -9,7 +9,7 @@ import { analyze } from '../lib/stats';
 import { addDays, dayKey, today } from '../lib/date';
 import { ML_PER_FLOZ } from '../lib/units';
 import { PROVIDERS, type AiProvider } from '../lib/ai';
-import { copyAndOpen, openExternal } from './Ai';
+import { ExtLink } from './Ai';
 import { buildCoachPrompt } from '../lib/coach';
 
 function Row({ icon, label, sub, onClick }: { icon: string; label: string; sub?: string; onClick: () => void }) {
@@ -26,15 +26,15 @@ export function More() {
   const { settings, profile, program } = useAppState();
   const daysSinceBackup = settings.lastBackup ? Math.floor((Date.now() - settings.lastBackup) / 86400000) : null;
 
-  // Built ahead of time: iOS only lets a tap open another app if nothing slow happens first.
-  const coach = useQuery(async () => buildCoachPrompt(await analyze(profile), profile, program, settings.weightUnit, addDays(today(), -1)),
-    [profile, program, settings.weightUnit], ['entries', 'weights', 'days']);
-
-  const openCoach = (provider: AiProvider) => {
-    if (!coach) return;
-    copyAndOpen(coach, PROVIDERS[provider].withPrompt(coach))
-      .then((ok) => ok && toast('Summary also copied — paste it if the chat opens empty'));
-  };
+  // Built ahead of time so the row can be a plain link (iOS only follows links the user taps directly).
+  const coach = useQuery(async () => {
+    try {
+      return { text: buildCoachPrompt(await analyze(profile), profile, program, settings.weightUnit, addDays(today(), -1)) };
+    } catch (e: any) {
+      return { error: String(e?.message ?? e) };
+    }
+  }, [profile, program, settings.weightUnit], ['entries', 'weights', 'days']);
+  const ai = PROVIDERS[settings.ai];
 
   return (
     <Screen>
@@ -56,13 +56,27 @@ export function More() {
       </div>
       <div class="section-label">AI coach</div>
       <div class="list">
-        <Row icon="chat" label={`Review my last 4 weeks with ${PROVIDERS[settings.ai].label}`} sub="Sends a summary of your data to the app you choose" onClick={() => openCoach(settings.ai)} />
+        {coach?.text ? (
+          <ExtLink class="item" href={ai.withPrompt(coach.text)} copy={coach.text}
+            onCopied={(ok) => ok && toast('Summary also copied — paste it if the chat opens empty')}>
+            <Icon name="chat" class="muted" />
+            <div class="grow"><div class="title">Review my last 4 weeks with {ai.label}</div><div class="sub">Opens {ai.label} with a summary of your data</div></div>
+            <Icon name="external" class="chev" size={18} />
+          </ExtLink>
+        ) : (
+          <div class="item">
+            <Icon name="chat" class="muted" />
+            <div class="grow"><div class="title">Review my last 4 weeks with {ai.label}</div>
+              <div class="sub">{coach?.error ? `Couldn't build the summary: ${coach.error}` : 'Preparing your summary…'}</div></div>
+          </div>
+        )}
       </div>
       <div class="list">
         <Row icon="gear" label="Settings" onClick={() => go('/settings')} />
         <Row icon="download" label="Backup & data" onClick={() => go('/data')} />
         <Row icon="lock" label="Privacy & how it works" onClick={() => go('/about')} />
       </div>
+      <p class="hint center tiny faint">Tally · version {__APP_VERSION__}</p>
     </Screen>
   );
 }
@@ -105,7 +119,7 @@ export function SettingsView() {
 
       <div class="section-label">USDA FoodData Central key</div>
       <div class="card">
-        <Field label="API key (optional)" hint={<>Branded-food search and barcode fallback work with a shared demo key that's limited to ~30 searches an hour. A free personal key removes that limit: <button class="link" onClick={() => openExternal('https://fdc.nal.usda.gov/api-key-signup')}>sign up</button> (instant, email only).</>}>
+        <Field label="API key (optional)" hint={<>Branded-food search and barcode fallback work with a shared demo key that's limited to ~30 searches an hour. A free personal key removes that limit: <ExtLink class="link" href="https://fdc.nal.usda.gov/api-key-signup">sign up</ExtLink> (instant, email only).</>}>
           <input class="input" value={settings.fdcKey} placeholder="DEMO_KEY" autoComplete="off" autoCapitalize="off" spellcheck={false} onChange={(e) => set({ fdcKey: (e.target as HTMLInputElement).value.trim() })} />
         </Field>
       </div>

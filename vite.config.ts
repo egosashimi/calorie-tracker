@@ -1,10 +1,17 @@
 import { defineConfig } from 'vite';
 import preact from '@preact/preset-vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { execSync } from 'node:child_process';
+
+function appVersion(): string {
+  const sha = process.env.GITHUB_SHA?.slice(0, 7) || (() => { try { return execSync('git rev-parse --short HEAD').toString().trim(); } catch { return 'dev'; } })();
+  return `${sha} (${new Date().toISOString().slice(0, 10)})`;
+}
 
 // Relative base so the build works at https://<user>.github.io/<repo>/ or any other path.
 export default defineConfig({
   base: './',
+  define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   plugins: [
     preact(),
     VitePWA({

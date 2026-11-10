@@ -1,3 +1,4 @@
+import type { ComponentChildren, JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { Screen, TopBar, NumInput, Segmented, toast } from '../ui/components';
 import { Icon } from '../ui/icons';
@@ -19,15 +20,6 @@ function loadDraft(): Draft | null {
   } catch { return null; }
 }
 
-export async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export async function readClipboard(): Promise<string | null> {
   try {
     return await navigator.clipboard.readText();
@@ -36,30 +28,29 @@ export async function readClipboard(): Promise<string | null> {
   }
 }
 
-/**
- * Copy text and open a link in the same tap. iOS only allows both while the tap is still "fresh",
- * so neither may wait on anything slow first: the copy is started, not awaited, before opening.
- */
-export function copyAndOpen(text: string, url: string): Promise<boolean> {
-  let copied: Promise<boolean>;
+/** Start copying text. Called directly inside a tap handler, where iOS allows clipboard writes. */
+export function startCopy(text: string): Promise<boolean> {
   try {
-    copied = navigator.clipboard.writeText(text).then(() => true, () => false);
+    return navigator.clipboard.writeText(text).then(() => true, () => false);
   } catch {
-    copied = Promise.resolve(false);
+    return Promise.resolve(false);
   }
-  openExternal(url);
-  return copied;
 }
 
-/** Open the assistant. A real link click is used because iOS home-screen apps block window.open without one. */
-export function openExternal(url: string) {
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+/**
+ * A real link the user taps to open Claude/ChatGPT. iOS home-screen apps ignore links opened from
+ * script, but always follow a link the user taps themselves; the prompt is copied in the same tap
+ * as a fallback in case the app opens without it.
+ */
+export function ExtLink({ href, copy, onCopied, class: cls, style, children }: {
+  href: string; copy?: string; onCopied?: (ok: boolean) => void; class?: string; style?: JSX.CSSProperties; children: ComponentChildren;
+}) {
+  return (
+    <a class={cls} style={style} href={href} target="_blank" rel="noopener noreferrer"
+      onClick={() => { if (copy) startCopy(copy).then((ok) => onCopied?.(ok)); }}>
+      {children}
+    </a>
+  );
 }
 
 export function AiLog({ q }: { q: URLSearchParams }) {
@@ -77,11 +68,10 @@ export function AiLog({ q }: { q: URLSearchParams }) {
     try { localStorage.setItem(DRAFT, JSON.stringify({ text, photo, reply, at: Date.now() })); } catch { /* ignore */ }
   }, [text, photo, reply]);
 
-  const ask = (p: AiProvider) => {
-    const prompt = mealPrompt(text, photo);
-    const copied = copyAndOpen(prompt, photo ? PROVIDERS[p].home : PROVIDERS[p].withPrompt(prompt));
-    if (photo) copied.then((ok) => toast(ok ? 'Prompt copied — paste it and attach your photo' : 'Copy the prompt below first'));
-  };
+  const prompt = mealPrompt(text, photo);
+  const hrefFor = (p: AiProvider) => (photo ? PROVIDERS[p].home : PROVIDERS[p].withPrompt(prompt));
+  const onCopied = (ok: boolean) => photo && toast(ok ? 'Prompt copied — paste it and attach your photo' : 'Copy the prompt below first');
+  const ready = photo || !!text.trim();
 
   const parse = (raw: string) => {
     setError('');
@@ -133,14 +123,23 @@ export function AiLog({ q }: { q: URLSearchParams }) {
       <textarea class="textarea" value={text} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)}
         placeholder={photo ? 'Optional notes, e.g. "about half the rice"' : 'e.g. Chipotle chicken burrito bowl with white rice, black beans, fajita veggies, mild salsa, cheese and guac'} />
       <div class="btn-row" style={{ marginTop: 10 }}>
-        <button class="btn" disabled={!photo && !text.trim()} onClick={() => ask(primary)}>Ask {PROVIDERS[primary].label}</button>
-        <button class="btn ghost" disabled={!photo && !text.trim()} onClick={() => ask(secondary)}>{PROVIDERS[secondary].label}</button>
+        {ready ? (
+          <>
+            <ExtLink class="btn" href={hrefFor(primary)} copy={prompt} onCopied={onCopied}>Ask {PROVIDERS[primary].label}</ExtLink>
+            <ExtLink class="btn ghost" href={hrefFor(secondary)} copy={prompt} onCopied={onCopied}>{PROVIDERS[secondary].label}</ExtLink>
+          </>
+        ) : (
+          <>
+            <button class="btn" disabled>Ask {PROVIDERS[primary].label}</button>
+            <button class="btn ghost" disabled>{PROVIDERS[secondary].label}</button>
+          </>
+        )}
       </div>
       <p class="hint pad" style={{ marginTop: 8 }}>
         {photo
           ? 'The prompt is copied for you. In the app, paste it, attach your photo, and send.'
           : 'Opens the app with the prompt filled in, using your own subscription. No API key needed.'}
-        {' '}<button class="link" onClick={async () => toast((await copyText(mealPrompt(text, photo))) ? 'Prompt copied' : "Couldn't copy")}>Copy prompt</button>
+        {' '}<button class="link" onClick={async () => toast((await startCopy(prompt)) ? 'Prompt copied' : "Couldn't copy")}>Copy prompt</button>
       </p>
 
       <div class="section-label">2 · Bring the reply back</div>

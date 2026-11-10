@@ -52,6 +52,10 @@ body {
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: inherit; }
+a.btn, a.item { text-decoration: none; }
+a.btn { color: var(--on-accent); }
+a.btn.ghost, a.btn.secondary { color: var(--ink); }
+.item a { text-decoration: none; }
 .num { font-variant-numeric: tabular-nums; }
 
 /* ---------- layout ---------- */
