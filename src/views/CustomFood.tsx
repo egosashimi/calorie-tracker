@@ -7,7 +7,7 @@ import { del, get, put } from '../lib/db';
 import { foodFromServing, perServingFood, uid, type Food } from '../lib/foods';
 import { LABEL_ORDER, NUTRIENTS, NUTRIENT_MAP, scale, macroKcal, type NutrientKey, type Nutrients } from '../lib/nutrients';
 import { labelPrompt, parseLabel, PROVIDERS } from '../lib/ai';
-import { copyText, openExternal, readClipboard } from './Ai';
+import { copyAndOpen, readClipboard } from './Ai';
 import { foodCache } from '../lib/actions';
 
 const LABEL_NAMES: Partial<Record<NutrientKey, string>> = { kcal: 'Calories', fat: 'Total fat', carbs: 'Total carbohydrate', sugar: 'Total sugars', addedSugar: 'Incl. added sugars' };
@@ -81,10 +81,9 @@ export function CustomFood({ id, q }: { id?: string; q: URLSearchParams }) {
     back('/foods');
   };
 
-  const askAi = async () => {
-    const ok = await copyText(labelPrompt());
-    toast(ok ? 'Prompt copied — paste it and attach a photo of the label' : 'Copy failed');
-    openExternal(PROVIDERS[settings.ai].home);
+  const askAi = () => {
+    copyAndOpen(labelPrompt(), PROVIDERS[settings.ai].home)
+      .then((ok) => toast(ok ? 'Prompt copied — paste it and attach a photo of the label' : 'Copy failed'));
   };
 
   const pasteAi = async () => {

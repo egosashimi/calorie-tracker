@@ -36,6 +36,21 @@ export async function readClipboard(): Promise<string | null> {
   }
 }
 
+/**
+ * Copy text and open a link in the same tap. iOS only allows both while the tap is still "fresh",
+ * so neither may wait on anything slow first: the copy is started, not awaited, before opening.
+ */
+export function copyAndOpen(text: string, url: string): Promise<boolean> {
+  let copied: Promise<boolean>;
+  try {
+    copied = navigator.clipboard.writeText(text).then(() => true, () => false);
+  } catch {
+    copied = Promise.resolve(false);
+  }
+  openExternal(url);
+  return copied;
+}
+
 /** Open the assistant. A real link click is used because iOS home-screen apps block window.open without one. */
 export function openExternal(url: string) {
   const a = document.createElement('a');
@@ -62,15 +77,10 @@ export function AiLog({ q }: { q: URLSearchParams }) {
     try { localStorage.setItem(DRAFT, JSON.stringify({ text, photo, reply, at: Date.now() })); } catch { /* ignore */ }
   }, [text, photo, reply]);
 
-  const ask = async (p: AiProvider) => {
+  const ask = (p: AiProvider) => {
     const prompt = mealPrompt(text, photo);
-    const copied = await copyText(prompt);
-    if (photo) {
-      toast(copied ? 'Prompt copied — paste it and attach your photo' : 'Copy the prompt below first');
-      openExternal(PROVIDERS[p].home);
-    } else {
-      openExternal(PROVIDERS[p].withPrompt(prompt));
-    }
+    const copied = copyAndOpen(prompt, photo ? PROVIDERS[p].home : PROVIDERS[p].withPrompt(prompt));
+    if (photo) copied.then((ok) => toast(ok ? 'Prompt copied — paste it and attach your photo' : 'Copy the prompt below first'));
   };
 
   const parse = (raw: string) => {

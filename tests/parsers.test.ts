@@ -102,3 +102,26 @@ describe('formatting', () => {
     expect(fmtQty(1.5, 'serving')).toBe('1.5 serving');
   });
 });
+
+describe('coach prompt', async () => {
+  const { buildCoachPrompt } = await import('../src/lib/coach');
+  const { PROVIDERS } = await import('../src/lib/ai');
+  const { addDays } = await import('../src/lib/date');
+  it('stays short enough to travel in a chat URL', () => {
+    const end = '2026-11-09';
+    const intake = new Map(), tracked = new Set<string>(), trend = new Map();
+    const weights = [];
+    for (let i = 0; i < 28; i++) {
+      const d = addDays(end, -i);
+      intake.set(d, { kcal: 2134.6, protein: 151.2, fat: 70.4, carbs: 222.9, fiber: 25 });
+      tracked.add(d);
+      weights.push({ date: d, kg: 84.3 });
+      trend.set(d, 84.6);
+    }
+    const a: any = { intake, tracked, trend, weights, expenditure: [], expenditureNow: 2600, trendNow: 84.6, days: new Map() };
+    const text = buildCoachPrompt(a, { sex: 'male', birthYear: 1990, heightCm: 180, activity: 'light' }, undefined, 'lb', end);
+    expect(text).toContain('11-09 Mon: 2135 kcal P151 F70 C223 | wt 185.8 trend 186.5');
+    expect(text.split('\n').filter((l) => /^\d\d-\d\d /.test(l))).toHaveLength(28);
+    expect(PROVIDERS.chatgpt.withPrompt(text).length).toBeLessThan(5000);
+  });
+});

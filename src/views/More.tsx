@@ -2,15 +2,15 @@ import { useEffect, useState } from 'preact/hooks';
 import { Screen, TopBar, Field, Segmented, NumInput, toast } from '../ui/components';
 import { Icon } from '../ui/icons';
 import { go } from '../router';
-import { saveSettings, useAppState, loadState, type Settings } from '../lib/store';
+import { saveSettings, useAppState, useQuery, loadState, type Settings } from '../lib/store';
 import { all, clearAll } from '../lib/db';
 import { buildBackup, exportBackup, exportCsv, restoreBackup, saveFile, type BackupFile } from '../lib/backup';
-import { analyze, averageOver } from '../lib/stats';
+import { analyze } from '../lib/stats';
 import { addDays, dayKey, today } from '../lib/date';
-import { lastCheckIn, targetsFor } from '../lib/program';
-import { fmtWeight, ML_PER_FLOZ } from '../lib/units';
+import { ML_PER_FLOZ } from '../lib/units';
 import { PROVIDERS, type AiProvider } from '../lib/ai';
-import { copyText, openExternal } from './Ai';
+import { copyAndOpen, openExternal } from './Ai';
+import { buildCoachPrompt } from '../lib/coach';
 
 function Row({ icon, label, sub, onClick }: { icon: string; label: string; sub?: string; onClick: () => void }) {
   return (
@@ -26,34 +26,14 @@ export function More() {
   const { settings, profile, program } = useAppState();
   const daysSinceBackup = settings.lastBackup ? Math.floor((Date.now() - settings.lastBackup) / 86400000) : null;
 
-  const coachPrompt = async (provider: AiProvider) => {
-    const a = await analyze(profile);
-    const end = addDays(today(), -1);
-    const unit = settings.weightUnit;
-    const lines: string[] = [];
-    for (let i = 27; i >= 0; i--) {
-      const d = addDays(end, -i);
-      const n = a.intake.get(d);
-      const w = a.weights.find((x) => x.date === d);
-      const t = targetsFor(program, d);
-      lines.push(`${d}: ${a.tracked.has(d) && n ? `${Math.round(n.kcal ?? 0)} kcal, P${Math.round(n.protein ?? 0)} F${Math.round(n.fat ?? 0)} C${Math.round(n.carbs ?? 0)}` : 'not tracked'}${t ? ` (target ${t.kcal})` : ''}${w ? `, scale ${fmtWeight(w.kg, unit)} ${unit}` : ''}, trend ${fmtWeight(a.trend.get(d), unit)} ${unit}`);
-    }
-    const avg = averageOver(a.intake, a.tracked, end, 28);
-    const ci = program && lastCheckIn(program);
-    const text = [
-      'You are my nutrition coach. Review the last 4 weeks of my food and weight data and give me short, specific, practical feedback: what is working, what to adjust, and whether my targets look right. Be honest and evidence-based.',
-      '',
-      profile ? `Me: ${profile.sex}, born ${profile.birthYear}, ${Math.round(profile.heightCm)} cm.` : '',
-      program ? `Goal: ${program.mode === 'manual' ? 'manual targets' : `${program.goal}${program.goal !== 'maintain' ? ` at ${program.ratePct}% body weight per week` : ''}`}, ${program.diet} diet, protein ${program.proteinGPerKg} g/kg.` : '',
-      a.expenditureNow ? `Estimated expenditure (adaptive, from intake vs. weight trend): ${Math.round(a.expenditureNow)} kcal/day.` : '',
-      ci ? `Current targets: ${ci.week.map((t) => t.kcal).join('/')} kcal (Sun–Sat), protein ${ci.week[0].protein} g.` : '',
-      `Average over tracked days: ${Math.round(avg.n.kcal ?? 0)} kcal, ${Math.round(avg.n.protein ?? 0)} g protein, ${Math.round(avg.n.fiber ?? 0)} g fiber (${avg.count} of 28 days tracked).`,
-      '',
-      'Daily log:',
-      ...lines,
-    ].filter((l, i, arr) => l !== '' || arr[i - 1] !== '').join('\n');
-    await copyText(text);
-    openExternal(PROVIDERS[provider].withPrompt(text));
+  // Built ahead of time: iOS only lets a tap open another app if nothing slow happens first.
+  const coach = useQuery(async () => buildCoachPrompt(await analyze(profile), profile, program, settings.weightUnit, addDays(today(), -1)),
+    [profile, program, settings.weightUnit], ['entries', 'weights', 'days']);
+
+  const openCoach = (provider: AiProvider) => {
+    if (!coach) return;
+    copyAndOpen(coach, PROVIDERS[provider].withPrompt(coach))
+      .then((ok) => ok && toast('Summary also copied — paste it if the chat opens empty'));
   };
 
   return (
@@ -76,7 +56,7 @@ export function More() {
       </div>
       <div class="section-label">AI coach</div>
       <div class="list">
-        <Row icon="chat" label={`Review my last 4 weeks with ${PROVIDERS[settings.ai].label}`} sub="Sends a summary of your data to the app you choose" onClick={() => coachPrompt(settings.ai)} />
+        <Row icon="chat" label={`Review my last 4 weeks with ${PROVIDERS[settings.ai].label}`} sub="Sends a summary of your data to the app you choose" onClick={() => openCoach(settings.ai)} />
       </div>
       <div class="list">
         <Row icon="gear" label="Settings" onClick={() => go('/settings')} />
